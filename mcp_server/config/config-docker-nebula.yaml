@@ -1,0 +1,54 @@
+# Graphiti MCP Server Configuration for Nebula + Milvus Backend
+#
+# This configuration file demonstrates how to set up the Graphiti MCP Server
+# to use Nebula Graph as the graph database backend and Milvus for vector storage.
+#
+# Environment variables can be used with ${VAR} or ${VAR:default} syntax.
+# Supports boolean conversion for values like "true"/"false", "1"/"0", "yes"/"no".
+
+server:
+  transport: http
+  host: "0.0.0.0"
+  port: 8000
+
+# LLM Configuration
+llm:
+  provider: openai
+  model: gpt-4.1
+  temperature: 0.0
+  max_tokens: 4096
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+
+# Embedder Configuration
+embedder:
+  provider: openai
+  model: text-embedding-3-small
+  dimensions: 1536
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+
+# Database Configuration - Nebula + Milvus
+database:
+  provider: nebula
+  providers:
+    nebula:
+      host: ${NEBULA_HOST:localhost}
+      port: ${NEBULA_PORT:9669}
+      username: ${NEBULA_USER:root}
+      password: ${NEBULA_PASSWORD:nebula}
+      space: ${NEBULA_SPACE:graphiti}
+      milvus_uri: ${MILVUS_URI:http://localhost:19530}
+      milvus_token: ${MILVUS_TOKEN:}
+
+# Graphiti Application Settings
+graphiti:
+  group_id: ${GRAPHITI_GROUP_ID:main}
+  user_id: ${GRAPHITI_USER_ID:mcp_user}
+  episode_id_prefix: ""
+  entity_types: []
+
+# Clear graph on startup (use with caution!)
+destroy_graph: false

@@ -191,11 +191,24 @@ class FalkorDBProviderConfig(BaseModel):
     database: str = 'default_db'
 
 
+class NebulaProviderConfig(BaseModel):
+    """Nebula provider configuration."""
+
+    host: str = 'localhost'
+    port: int = 9669
+    username: str = 'root'
+    password: str | None = None
+    space: str = 'graphiti'
+    milvus_uri: str = 'http://localhost:19530'
+    milvus_token: str = ''
+
+
 class DatabaseProvidersConfig(BaseModel):
     """Database providers configuration."""
 
     neo4j: Neo4jProviderConfig | None = None
     falkordb: FalkorDBProviderConfig | None = None
+    nebula: NebulaProviderConfig | None = None
 
 
 class DatabaseConfig(BaseModel):

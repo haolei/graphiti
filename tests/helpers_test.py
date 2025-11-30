@@ -65,6 +65,16 @@ if os.getenv('DISABLE_NEPTUNE') is None:
     except ImportError:
         raise
 
+# Disable Nebula by default (requires separate Nebula + Milvus services)
+os.environ.setdefault('DISABLE_NEBULA', 'True')
+if os.getenv('DISABLE_NEBULA') is None:
+    try:
+        from graphiti_core.driver.nebula import NebulaDriver
+
+        drivers.append(GraphProvider.NEBULA)
+    except ImportError:
+        raise
+
 NEO4J_URI = os.getenv('NEO4J_URI', 'bolt://localhost:7687')
 NEO4J_USER = os.getenv('NEO4J_USER', 'neo4j')
 NEO4J_PASSWORD = os.getenv('NEO4J_PASSWORD', 'test')
@@ -77,6 +87,14 @@ FALKORDB_PASSWORD = os.getenv('FALKORDB_PASSWORD', None)
 NEPTUNE_HOST = os.getenv('NEPTUNE_HOST', 'localhost')
 NEPTUNE_PORT = os.getenv('NEPTUNE_PORT', 8182)
 AOSS_HOST = os.getenv('AOSS_HOST', None)
+
+NEBULA_HOST = os.getenv('NEBULA_HOST', 'localhost')
+NEBULA_PORT = os.getenv('NEBULA_PORT', '9669')
+NEBULA_USER = os.getenv('NEBULA_USER', 'root')
+NEBULA_PASSWORD = os.getenv('NEBULA_PASSWORD', 'nebula')
+NEBULA_SPACE = os.getenv('NEBULA_SPACE', 'graphiti')
+MILVUS_URI = os.getenv('MILVUS_URI', 'http://localhost:19530')
+MILVUS_TOKEN = os.getenv('MILVUS_TOKEN', '')
 
 KUZU_DB = os.getenv('KUZU_DB', ':memory:')
 
@@ -108,6 +126,16 @@ def get_driver(provider: GraphProvider) -> GraphDriver:
             host=NEPTUNE_HOST,
             port=int(NEPTUNE_PORT),
             aoss_host=AOSS_HOST,
+        )
+    elif provider == GraphProvider.NEBULA:
+        return NebulaDriver(
+            host=NEBULA_HOST,
+            port=int(NEBULA_PORT),
+            username=NEBULA_USER,
+            password=NEBULA_PASSWORD,
+            space=NEBULA_SPACE,
+            milvus_uri=MILVUS_URI,
+            milvus_token=MILVUS_TOKEN,
         )
     else:
         raise ValueError(f'Driver {provider} not available')

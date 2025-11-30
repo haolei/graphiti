@@ -16,6 +16,14 @@ try:
 except ImportError:
     HAS_FALKOR = False
 
+# Try to import NebulaDriver if available
+try:
+    from graphiti_core.driver.nebula import NebulaDriver  # noqa: F401
+
+    HAS_NEBULA = True
+except ImportError:
+    HAS_NEBULA = False
+
 # Kuzu support removed - FalkorDB is now the default
 from graphiti_core.embedder import EmbedderClient, OpenAIEmbedder
 from graphiti_core.llm_client import LLMClient, OpenAIClient
@@ -431,6 +439,41 @@ class DatabaseDriverFactory:
                     'port': port,
                     'password': password,
                     'database': falkor_config.database,
+                }
+
+            case 'nebula':
+                if not HAS_NEBULA:
+                    raise ValueError('Nebula driver not available in current graphiti-core version')
+
+                # Use Nebula config if provided, otherwise use defaults
+                if config.providers.nebula:
+                    nebula_config = config.providers.nebula
+                else:
+                    # Create default Nebula configuration
+                    from config.schema import NebulaProviderConfig
+
+                    nebula_config = NebulaProviderConfig()
+
+                # Check for environment variable overrides (for CI/CD compatibility)
+                import os
+
+                host = os.environ.get('NEBULA_HOST', nebula_config.host)
+                port = int(os.environ.get('NEBULA_PORT', str(nebula_config.port)))
+                username = os.environ.get('NEBULA_USER', nebula_config.username)
+                password = os.environ.get('NEBULA_PASSWORD', nebula_config.password)
+                space = os.environ.get('NEBULA_SPACE', nebula_config.space)
+                milvus_uri = os.environ.get('MILVUS_URI', nebula_config.milvus_uri)
+                milvus_token = os.environ.get('MILVUS_TOKEN', nebula_config.milvus_token)
+
+                return {
+                    'driver': 'nebula',
+                    'host': host,
+                    'port': port,
+                    'username': username,
+                    'password': password,
+                    'space': space,
+                    'milvus_uri': milvus_uri,
+                    'milvus_token': milvus_token,
                 }
 
             case _:
