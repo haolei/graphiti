@@ -50,7 +50,7 @@ class NebulaDriverSession(GraphDriverSession):
 
         resp = await self._session.execute(formatted_query)
         if not resp.is_succeeded():
-            raise RuntimeError(f'Query failed: {resp.error_msg}')
+            raise RuntimeError(f'Query failed: {resp.error_msg()}')
 
         keys = []
         if resp.col_names:

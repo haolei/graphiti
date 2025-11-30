@@ -33,7 +33,7 @@ kuzu = ["kuzu>=0.11.3"]
 falkordb = ["falkordb>=1.1.2,<2.0.0"]
 voyageai = ["voyageai>=0.2.3"]
 neo4j-opensearch = ["boto3>=1.39.16", "opensearch-py>=3.0.0"]
-sentence-transformers = ["sentence-transformers>=3.2.1"]
+sentence-transformers = ["sentence-transformers>=3.2.1", "torch>=2.9.0"]
 neptune = ["langchain-aws>=0.2.29", "opensearch-py>=3.0.0", "boto3>=1.39.16"]
 nebula = ["nebula3-python>=3.6.0", "pymilvus>=2.3.0"]
 tracing = ["opentelemetry-api>=1.20.0", "opentelemetry-sdk>=1.20.0"]
@@ -55,7 +55,8 @@ dev = [
     "langsmith>=0.1.108",
     "langchain-openai>=0.2.6",
     "sentence-transformers>=3.2.1",
-    "transformers>=4.45.2",
+    "torch>=2.9.0",
+    "transformers>=4.52.0",
     "voyageai>=0.2.3",
     "pytest>=8.3.3",
     "pytest-asyncio>=0.24.0",

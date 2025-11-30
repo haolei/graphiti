@@ -16,19 +16,21 @@ limitations under the License.
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Optional
 
 try:
-    from nebula3.fbthrift.util.asyncio import create_client
-    from nebula3.graph import GraphService
+    from nebula3.Config import Config
+    from nebula3.gclient.net import ConnectionPool
 except ImportError:
-    create_client = None
-    GraphService = None
+    Config = None
+    ConnectionPool = None
 
 logger = logging.getLogger(__name__)
 
 
 class AsyncNebulaPool:
+    """Async wrapper around nebula3-python's ConnectionPool using asyncio.to_thread."""
+
     def __init__(
         self,
         host: str,
@@ -42,130 +44,99 @@ class AsyncNebulaPool:
         self._min_size = min_size
         self._max_size = max_size
         self._timeout = timeout
-        self._pool: asyncio.Queue = asyncio.Queue()
-        self._sem = asyncio.Semaphore(max_size)
-        self._lock = asyncio.Lock()
-        self._current_size = 0
+        self._pool: Optional[Any] = None
         self._closed = False
+        self._init_lock = asyncio.Lock()
 
     async def initialize(self):
-        """Initialize the connection pool with minimum connections."""
-        if create_client is None:
-            raise ImportError(
-                'nebula3-python is not installed. Please install it with `pip install nebula3-python`.'
-            )
+        """Initialize the connection pool."""
+        if self._pool is not None:
+            return  # Already initialized
 
-        tasks = [self._create_connection() for _ in range(self._min_size)]
-        await asyncio.gather(*tasks)
-
-    async def _create_connection(self):
-        """Create a new connection and add it to the pool."""
-        if create_client is None or GraphService is None:
-            raise ImportError('nebula3-python is not installed')
-
-        async with self._lock:
-            if self._current_size >= self._max_size:
+        async with self._init_lock:
+            # Double-check after acquiring lock
+            if self._pool is not None:
                 return
-            self._current_size += 1
 
-        try:
-            # Create context manager
-            ctx = create_client(GraphService.Client, host=self._host, port=self._port)
-            # Manually enter context to get client
-            client = await ctx.__aenter__()
-            # Attach context manager to client for later cleanup
-            client._ctx_manager = ctx
+            if ConnectionPool is None or Config is None:
+                raise ImportError(
+                    'nebula3-python is not installed. Please install it with `pip install nebula3-python`.'
+                )
 
-            self._pool.put_nowait(client)
-        except Exception as e:
-            async with self._lock:
-                self._current_size -= 1
-            logger.error(f'Failed to create async nebula client: {e}')
-            raise ConnectionError(f'Failed to create async nebula client: {e}')
+            config = Config()
+            config.max_connection_pool_size = self._max_size
+            config.min_connection_pool_size = self._min_size
+            config.timeout = self._timeout * 1000  # Convert to milliseconds
 
-    async def acquire(self) -> Any:
-        """Acquire a connection from the pool."""
-        if self._closed:
-            raise RuntimeError('Connection pool is closed')
+            pool = ConnectionPool()
 
-        await self._sem.acquire()
+            # Initialize pool in thread to avoid blocking
+            ok = await asyncio.to_thread(
+                pool.init, [(self._host, self._port)], config
+            )
+            if not ok:
+                raise ConnectionError(
+                    f'Failed to initialize connection pool to {self._host}:{self._port}'
+                )
+            self._pool = pool
+            logger.info(f'Nebula connection pool initialized: {self._host}:{self._port}')
 
-        if not self._pool.empty():
-            return await self._pool.get()
+    async def get_session_async(self, username: str, password: str):
+        """Get a session from the pool asynchronously (auto-initializes if needed)."""
+        await self.initialize()
+        assert self._pool is not None  # Guaranteed after initialize()
+        return await asyncio.to_thread(self._pool.get_session, username, password)
 
-        try:
-            await self._create_connection()
-            return await self._pool.get()
-        except Exception:
-            self._sem.release()
-            raise
+    def get_session(self, username: str, password: str):
+        """Get a session from the pool (synchronous, for use with asyncio.to_thread)."""
+        if self._pool is None:
+            raise RuntimeError('Connection pool not initialized')
+        return self._pool.get_session(username, password)
 
-    async def release(self, client: Any):
-        """Release a connection back to the pool."""
-        if self._closed:
-            await self._close_client(client)
-            return
-
-        try:
-            # Optional: Check if connection is alive?
-            # For now, just put it back
-            self._pool.put_nowait(client)
-        finally:
-            self._sem.release()
+    def session_context(self, username: str, password: str):
+        """Get a session context manager from the pool (synchronous)."""
+        if self._pool is None:
+            raise RuntimeError('Connection pool not initialized')
+        return self._pool.session_context(username, password)
 
     async def close(self):
-        """Close all connections in the pool."""
+        """Close the connection pool."""
         self._closed = True
-        while not self._pool.empty():
-            client = await self._pool.get()
-            await self._close_client(client)
-
-        # Wait for all semaphores to be released?
-        # Or just let them be garbage collected since we set _closed=True
-
-    async def _close_client(self, client: Any):
-        if hasattr(client, '_ctx_manager'):
-            await client._ctx_manager.__aexit__(None, None, None)
+        if self._pool is not None:
+            await asyncio.to_thread(self._pool.close)
+            self._pool = None
+            logger.info('Nebula connection pool closed')
 
 
 class AsyncSession:
+    """Async wrapper for Nebula session using asyncio.to_thread."""
+
     def __init__(self, pool: AsyncNebulaPool, username: str, password: str, space: str):
-        self.pool = pool
-        self.user = username
-        self.pwd = password
-        self.space = space
-        self.client = None
-        self.session_id = None
+        self._pool = pool
+        self._username = username
+        self._password = password
+        self._space = space
+        self._session = None
 
     async def __aenter__(self):
-        self.client = await self.pool.acquire()
-        try:
-            resp = await self.client.authenticate(self.user, self.pwd)
-            if resp.error_code != 0:
-                raise RuntimeError(f'Auth failed: {resp.error_msg}')
-            self.session_id = resp.session_id
-
-            # Switch space
-            # Note: execute requires session_id
-            await self.execute(f'USE {self.space}')
-            return self
-        except Exception:
-            if self.client:
-                await self.pool.release(self.client)
-                self.client = None
-            raise
+        # Get session from pool (auto-initializes pool if needed)
+        self._session = await self._pool.get_session_async(self._username, self._password)
+        # Switch to the specified space
+        await self.execute(f'USE {self._space}')
+        return self
 
     async def execute(self, stmt: str):
-        if not self.client or not self.session_id:
+        """Execute a statement asynchronously."""
+        if self._session is None:
             raise RuntimeError('Session not initialized')
-        return await self.client.execute(self.session_id, stmt)
+        return await asyncio.to_thread(self._session.execute, stmt)
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if self.client and self.session_id:
+        if self._session is not None:
             try:
-                await self.client.signout(self.session_id)
+                # Release session back to pool
+                await asyncio.to_thread(self._session.release)
             except Exception as e:
-                logger.warning(f'Failed to signout session: {e}')
+                logger.warning(f'Failed to release session: {e}')
             finally:
-                await self.pool.release(self.client)
-                self.client = None
+                self._session = None

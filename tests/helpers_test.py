@@ -66,7 +66,6 @@ if os.getenv('DISABLE_NEPTUNE') is None:
         raise
 
 # Disable Nebula by default (requires separate Nebula + Milvus services)
-os.environ.setdefault('DISABLE_NEBULA', 'True')
 if os.getenv('DISABLE_NEBULA') is None:
     try:
         from graphiti_core.driver.nebula import NebulaDriver

@@ -20,8 +20,19 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from dotenv import load_dotenv
 
 from graphiti_core.driver.driver import GraphProvider
+
+load_dotenv()
+
+NEBULA_HOST = os.getenv('NEBULA_HOST', 'localhost')
+NEBULA_PORT = int(os.getenv('NEBULA_PORT', '9669'))
+NEBULA_USER = os.getenv('NEBULA_USER', 'root')
+NEBULA_PASSWORD = os.getenv('NEBULA_PASSWORD', 'nebula')
+NEBULA_SPACE = os.getenv('NEBULA_SPACE', 'graphiti')
+MILVUS_URI = os.getenv('MILVUS_URI', 'http://localhost:19530')
+MILVUS_TOKEN = os.getenv('MILVUS_TOKEN', '')
 
 # Try to import Nebula driver if available
 try:
@@ -65,13 +76,13 @@ class TestNebulaDriver:
             mock_schema_class.return_value = self.mock_schema_manager
 
             self.driver = NebulaDriver(
-                host='localhost',
-                port=9669,
-                username='root',
-                password='nebula',
-                space='graphiti',
-                milvus_uri='http://localhost:19530',
-                milvus_token='',
+                host=NEBULA_HOST,
+                port=NEBULA_PORT,
+                username=NEBULA_USER,
+                password=NEBULA_PASSWORD,
+                space=NEBULA_SPACE,
+                milvus_uri=MILVUS_URI,
+                milvus_token=MILVUS_TOKEN,
             )
 
             # Replace mocks after init
@@ -205,7 +216,10 @@ class TestNebulaDriverSession:
         """Set up test fixtures."""
         self.mock_pool = MagicMock()
         self.session = NebulaDriverSession(
-            pool=self.mock_pool, username='root', password='nebula', space='graphiti'
+            pool=self.mock_pool,
+            username=NEBULA_USER,
+            password=NEBULA_PASSWORD,
+            space=NEBULA_SPACE,
         )
 
     @pytest.mark.asyncio
@@ -249,7 +263,10 @@ class TestNebulaValueConversion:
         """Set up test fixtures."""
         self.mock_pool = MagicMock()
         self.session = NebulaDriverSession(
-            pool=self.mock_pool, username='root', password='nebula', space='graphiti'
+            pool=self.mock_pool,
+            username=NEBULA_USER,
+            password=NEBULA_PASSWORD,
+            space=NEBULA_SPACE,
         )
 
     def test_convert_null_value(self):
@@ -395,13 +412,16 @@ class TestMilvusAdapter:
     def setup_method(self):
         """Set up test fixtures."""
         self.adapter = MilvusAdapter(
-            uri='http://localhost:19530', token='', collection_name='test_collection', dim=1536
+            uri=MILVUS_URI,
+            token=MILVUS_TOKEN,
+            collection_name='test_collection',
+            dim=1536,
         )
 
     def test_init(self):
         """Test MilvusAdapter initialization."""
-        assert self.adapter.uri == 'http://localhost:19530'
-        assert self.adapter.token == ''
+        assert self.adapter.uri == MILVUS_URI
+        assert self.adapter.token == MILVUS_TOKEN
         assert self.adapter.collection_name == 'test_collection'
         assert self.adapter.dim == 1536
         assert self.adapter.client is None
@@ -417,7 +437,7 @@ class TestMilvusAdapter:
 
             await self.adapter.connect()
 
-            mock_client_class.assert_called_once_with('http://localhost:19530', token='')
+            mock_client_class.assert_called_once_with(MILVUS_URI, token=MILVUS_TOKEN)
             assert self.adapter.client is mock_client
 
     @pytest.mark.asyncio
@@ -552,7 +572,10 @@ class TestSchemaManager:
         """Set up test fixtures."""
         self.mock_pool = MagicMock()
         self.schema_manager = SchemaManager(
-            pool=self.mock_pool, username='root', password='nebula', space='graphiti'
+            pool=self.mock_pool,
+            username=NEBULA_USER,
+            password=NEBULA_PASSWORD,
+            space=NEBULA_SPACE,
         )
 
     def test_get_nebula_type_bool(self):
@@ -587,10 +610,12 @@ class TestAsyncNebulaPool:
 
     def test_init(self):
         """Test AsyncNebulaPool initialization."""
-        pool = AsyncNebulaPool(host='localhost', port=9669, min_size=2, max_size=20, timeout=10)
+        pool = AsyncNebulaPool(
+            host=NEBULA_HOST, port=NEBULA_PORT, min_size=2, max_size=20, timeout=10
+        )
 
-        assert pool._host == 'localhost'
-        assert pool._port == 9669
+        assert pool._host == NEBULA_HOST
+        assert pool._port == NEBULA_PORT
         assert pool._min_size == 2
         assert pool._max_size == 20
         assert pool._timeout == 10
@@ -600,7 +625,7 @@ class TestAsyncNebulaPool:
     @pytest.mark.asyncio
     async def test_acquire_when_closed(self):
         """Test acquire raises error when pool is closed."""
-        pool = AsyncNebulaPool(host='localhost', port=9669)
+        pool = AsyncNebulaPool(host=NEBULA_HOST, port=NEBULA_PORT)
         pool._closed = True
 
         with pytest.raises(RuntimeError, match='Connection pool is closed'):
@@ -609,7 +634,7 @@ class TestAsyncNebulaPool:
     @pytest.mark.asyncio
     async def test_close(self):
         """Test pool close method."""
-        pool = AsyncNebulaPool(host='localhost', port=9669)
+        pool = AsyncNebulaPool(host=NEBULA_HOST, port=NEBULA_PORT)
         await pool.close()
         assert pool._closed is True
 
@@ -755,23 +780,15 @@ class TestNebulaDriverIntegration:
     @pytest.mark.integration
     async def test_basic_integration_with_real_nebula(self):
         """Basic integration test with real Nebula instance."""
-        nebula_host = os.getenv('NEBULA_HOST', 'localhost')
-        nebula_port = int(os.getenv('NEBULA_PORT', '9669'))
-        nebula_user = os.getenv('NEBULA_USER', 'root')
-        nebula_password = os.getenv('NEBULA_PASSWORD', 'nebula')
-        nebula_space = os.getenv('NEBULA_SPACE', 'graphiti')
-        milvus_uri = os.getenv('MILVUS_URI', 'http://localhost:19530')
-        milvus_token = os.getenv('MILVUS_TOKEN', '')
-
         try:
             driver = NebulaDriver(
-                host=nebula_host,
-                port=nebula_port,
-                username=nebula_user,
-                password=nebula_password,
-                space=nebula_space,
-                milvus_uri=milvus_uri,
-                milvus_token=milvus_token,
+                host=NEBULA_HOST,
+                port=NEBULA_PORT,
+                username=NEBULA_USER,
+                password=NEBULA_PASSWORD,
+                space=NEBULA_SPACE,
+                milvus_uri=MILVUS_URI,
+                milvus_token=MILVUS_TOKEN,
             )
 
             await driver.connect()
